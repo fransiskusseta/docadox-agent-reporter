@@ -267,3 +267,4 @@ Wire one real terminal-managed agent session (e.g. a `tmux`-hosted Claude
 CLI session) to actually call `reporter_cli.py report` at its own natural
 status-change points, and try the `adapters/tmux_adapter.py` prototype
 end-to-end with a real bot token, before adding more agents.
+Cloud smoke test
