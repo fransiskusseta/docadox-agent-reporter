@@ -91,6 +91,24 @@ def test_duplicate_webhook_delivery_id_is_not_reported_twice(tmp_path, monkeypat
     assert len(sink_calls) == 1  # only the first delivery was ever reported
 
 
+def test_distinct_webhook_deliveries_get_distinct_message_ids(tmp_path, monkeypatch):
+    sink_calls: list = []
+    adapter = _adapter(tmp_path, monkeypatch, sink_calls)
+    payload = {"action": "closed", "number": 5, "pull_request": {"number": 5, "merged": False},
+              "repository": {"full_name": "acme/widgets"}}
+    body = json.dumps(payload).encode()
+    sig = _sign(WEBHOOK_SECRET, body)
+
+    adapter.receive_webhook(event_type="pull_request", signature_header=sig, raw_body=body,
+                            delivery_id="close-cycle-1")
+    adapter.receive_webhook(event_type="pull_request", signature_header=sig, raw_body=body,
+                            delivery_id="close-cycle-2")
+
+    assert len(sink_calls) == 2
+    from adapters.github.adapter import _message_id_for
+    assert _message_id_for(sink_calls[0]) != _message_id_for(sink_calls[1])
+
+
 def test_unsupported_webhook_event_ignored_without_signature_bypass():
     from adapters.github.webhook import parse_webhook_event
     assert parse_webhook_event("star", {"action": "created"}) is None

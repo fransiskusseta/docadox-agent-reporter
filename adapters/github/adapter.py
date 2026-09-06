@@ -35,11 +35,17 @@ class WebhookSignatureInvalid(Exception):
 
 
 def _message_id_for(event: NormalizedEvent) -> str:
-    """Deterministic idempotency key for the Gateway sink's own
-    message_id-keyed dedup (gateway/store.py): identical content always
-    produces the identical id, so a retried delivery is naturally
-    idempotent there, mirroring reporter/store.py's own dedup_key_for()."""
-    raw = "\x1f".join([event.agent_id, event.task_id, event.status, event.summary, event.details or ""])
+    """Deterministic idempotency key for the Gateway sink.
+
+    GitHub delivery IDs distinguish two real lifecycle events with identical
+    normalized content (for example, close -> reopen -> close on one PR),
+    while the adapter's durable delivery table still suppresses a redelivery
+    of the same GitHub delivery.
+    """
+    delivery_id = event.extra.get("delivery_id", "")
+    raw = "\x1f".join([
+        event.agent_id, event.task_id, event.status, event.summary, event.details or "", delivery_id,
+    ])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:64]
 
 
@@ -115,6 +121,9 @@ class GitHubCloudAdapter:
         if parsed is None:
             return None
         event = self.normalize_event(parsed)
+        if delivery_id:
+            from dataclasses import replace
+            event = replace(event, extra={**event.extra, "delivery_id": delivery_id})
         if event.pr_number is not None and event.repo_full_name:
             self.state.set_agent_target(event.agent_id, event.repo_full_name, event.pr_number)
         return self.report(event)
@@ -129,7 +138,11 @@ class GitHubCloudAdapter:
         parsed = parse_hook_event(event_name, payload)
         if parsed is None:
             return None
-        return self.report(self.normalize_event(parsed))
+        event = self.normalize_event(parsed)
+        if delivery_id:
+            from dataclasses import replace
+            event = replace(event, extra={**event.extra, "delivery_id": delivery_id})
+        return self.report(event)
 
     # ── get_status: on-demand single-task lookup (not just poll's batch) ────
     def get_status(self, repo: str, task_id: str) -> dict:
