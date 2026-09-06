@@ -128,7 +128,8 @@ class Store:
     def record_event(self, *, agent_id: str, agent_name: Optional[str], task_id: str, status: str,
                      summary: str, details: Optional[str], client_timestamp: Optional[str],
                      message_id: Optional[str] = None, content_blocked: bool = False,
-                     block_reason: Optional[str] = None) -> tuple[int, bool]:
+                     block_reason: Optional[str] = None,
+                     message_id_authoritative: bool = False) -> tuple[int, bool]:
         """Inserts the event; returns (event_id, is_duplicate_of_a_prior_notified_event).
         The event is ALWAYS recorded (for the audit trail / /v1/status), even
         when it is a duplicate that must not re-notify.
@@ -156,10 +157,16 @@ class Store:
                     return existing["id"], bool(existing["notified"])
 
             key = dedup_key_for(agent_id, task_id, status, summary, details)
-            prior = conn.execute(
-                "SELECT 1 FROM events WHERE dedup_key = ? AND notified = 1 LIMIT 1", (key,)
-            ).fetchone()
-            is_duplicate = prior is not None
+            # An explicitly supplied message_id is the trusted producer's
+            # event identity. Content-hash dedup remains for legacy/generated
+            # IDs, but must not collapse two distinct delivery-qualified
+            # lifecycle events that happen to have identical content.
+            is_duplicate = False
+            if not message_id_authoritative:
+                prior = conn.execute(
+                    "SELECT 1 FROM events WHERE dedup_key = ? AND notified = 1 LIMIT 1", (key,)
+                ).fetchone()
+                is_duplicate = prior is not None
             cur = conn.execute(
                 "INSERT INTO events (agent_id, agent_name, task_id, status, summary, details, "
                 "dedup_key, message_id, content_blocked, block_reason, notified, client_timestamp, "

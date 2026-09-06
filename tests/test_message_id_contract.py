@@ -38,6 +38,20 @@ def test_duplicate_supplied_message_id_is_deduplicated_safely(store, settings, t
     assert len(telegram.sent) == 1  # never sent twice
 
 
+def test_distinct_supplied_message_ids_allow_distinct_same_content_events(store, settings, telegram):
+    close_one = _send(store, settings, telegram, status="CANCELLED", summary="PR closed", task_id="pr:7",
+                      message_id="github-delivery-close-1")
+    # A reopen transition occurs between these close events in production;
+    # the two delivery-qualified IDs must remain distinct even though the
+    # normalized close content is identical.
+    close_two = _send(store, settings, telegram, status="CANCELLED", summary="PR closed", task_id="pr:7",
+                      message_id="github-delivery-close-2")
+    assert close_one.notified is True
+    assert close_two.notified is True
+    assert close_one.message_id != close_two.message_id
+    assert len(telegram.sent) == 2
+
+
 def test_retry_of_a_never_notified_message_id_is_not_treated_as_a_duplicate(store, settings, telegram):
     # telegram not configured on this settings instance -> first attempt is
     # recorded but genuinely never delivered; a retry with the same

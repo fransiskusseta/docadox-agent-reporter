@@ -60,6 +60,7 @@ def handle_event(*, store: Store, settings: Settings, telegram: Optional[Telegra
             summary="[blocked before persistence: secret-shaped content]", details=None,
             client_timestamp=client_timestamp, message_id=resolved_message_id,
             content_blocked=True, block_reason=block_reason,
+            message_id_authoritative=message_id is not None,
         )
         return EventResult(event_id=event_id, notified=False, duplicate=is_duplicate,
                            message_id=resolved_message_id,
@@ -68,7 +69,7 @@ def handle_event(*, store: Store, settings: Settings, telegram: Optional[Telegra
     event_id, is_duplicate = store.record_event(
         agent_id=agent_id, agent_name=agent_name, task_id=task_id, status=status,
         summary=summary, details=details, client_timestamp=client_timestamp,
-        message_id=resolved_message_id,
+        message_id=resolved_message_id, message_id_authoritative=message_id is not None,
     )
 
     if status not in NOTIFYING_STATUSES:
