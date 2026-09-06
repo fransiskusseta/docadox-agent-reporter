@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: docadox-reporter-gateway
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.gateway
+    healthCheckPath: /v1/ready
+    envVars:
+      - key: DOCADOX_GATEWAY_DATA_DIR
+        value: /var/data
+      - key: DOCADOX_REPORTER_DATA_DIR
+        value: /var/data
+      - key: DOCADOX_GATEWAY_HOST
+        value: 0.0.0.0
+      - key: DOCADOX_GATEWAY_PORT
+        value: 8788
+      - key: DOCADOX_GATEWAY_BRIDGE_KEYS
+        sync: false
+      - key: DOCADOX_GATEWAY_ADAPTER_SECRET
+        sync: false
+      - key: DOCADOX_GATEWAY_CORE_SECRET
+        sync: false
+      - key: DOCADOX_REPORTER_TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: DOCADOX_REPORTER_TELEGRAM_CHAT_ID
+        sync: false
+    disk:
+      name: gateway-data
+      mountPath: /var/data
+      sizeGB: 1
+
+  - type: web
+    name: docadox-reporter-github-adapter
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.github-adapter
+    healthCheckPath: /health
+    envVars:
+      - key: DOCADOX_GITHUB_TOKEN
+        sync: false
+      - key: DOCADOX_GITHUB_REPOS
+        sync: false
+      - key: DOCADOX_GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: DOCADOX_GITHUB_COPILOT_HOOK_SECRET
+        sync: false
+      - key: DOCADOX_GITHUB_ADAPTER_SINK
+        value: gateway
+      - key: DOCADOX_GATEWAY_URL
+        sync: false
+      - key: DOCADOX_GATEWAY_ADAPTER_SECRET
+        sync: false
+      - key: DOCADOX_GITHUB_ADAPTER_STATE_DB
+        value: /var/data/github_adapter.db
+      - key: DOCADOX_GITHUB_ADAPTER_HOST
+        value: 0.0.0.0
+      - key: DOCADOX_GITHUB_ADAPTER_PORT
+        value: 8790
+    disk:
+      name: github-adapter-data
+      mountPath: /var/data
+      sizeGB: 1
