@@ -17,7 +17,7 @@ services:
       - key: DOCADOX_GATEWAY_BRIDGE_KEYS
         sync: false
       - key: DOCADOX_GATEWAY_ADAPTER_SECRET
-        sync: false
+        generateValue: true
       - key: DOCADOX_GATEWAY_CORE_SECRET
         sync: false
       - key: DOCADOX_REPORTER_TELEGRAM_BOT_TOKEN
@@ -47,9 +47,15 @@ services:
       - key: DOCADOX_GITHUB_ADAPTER_SINK
         value: gateway
       - key: DOCADOX_GATEWAY_URL
-        sync: false
+        fromService:
+          type: web
+          name: docadox-reporter-gateway
+          envVarKey: RENDER_EXTERNAL_URL
       - key: DOCADOX_GATEWAY_ADAPTER_SECRET
-        sync: false
+        fromService:
+          type: web
+          name: docadox-reporter-gateway
+          envVarKey: DOCADOX_GATEWAY_ADAPTER_SECRET
       - key: DOCADOX_GITHUB_ADAPTER_STATE_DB
         value: /var/data/github_adapter.db
       - key: DOCADOX_GITHUB_ADAPTER_HOST
