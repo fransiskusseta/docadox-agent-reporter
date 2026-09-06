@@ -48,6 +48,10 @@ class ReporterCoreTelegramNotifier:
             # idempotent duplicate as successful for Gateway delivery too.
             if result.notified or result.duplicate:
                 store.mark_event_notified(event["message_id"])
+            if result.telegram_message_id is not None:
+                store.map_telegram_message(
+                    result.telegram_message_id, event["agent_id"], event["task_id"], event["message_id"]
+                )
             elif result.rejected_reason:
                 store.mark_event_notified(event["message_id"], result.rejected_reason)
         except Exception as exc:  # Telegram is best effort; event remains durable for retry.

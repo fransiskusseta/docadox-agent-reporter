@@ -34,6 +34,14 @@ Owner allowlist policy remain Reporter Core responsibilities. The Core sends a
 normalized `OwnerReply` to `/v1/cloud/owner-replies` after routing the reply to an
 exact agent/task target.
 
+In the cloud deployment, the Gateway also owns inbound Telegram polling. It uses
+the same configured Owner chat, Telegram-message correlation, and secret guard,
+but writes normalized replies directly to the Gateway's durable instruction
+queue. The Local Bridge is then the only laptop component needed to deliver that
+queue to the local Reporter inbox. In cloud mode, do not run the local Reporter
+Telegram poller against the same bot; local-only development may continue to
+use `python -m reporter` as the Telegram poller owner.
+
 ## Environment
 
 Gateway:

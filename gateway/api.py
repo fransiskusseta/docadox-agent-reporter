@@ -44,8 +44,12 @@ def create_app(*, store: GatewayStore, settings: GatewaySettings,
 
     @app.get("/v1/ready")
     def ready():
-        # Opening the database is the readiness check; no external provider is required.
+        # Opening the database is the storage check; cloud Telegram inbound
+        # polling is also required when the production launcher attaches it.
         store.status()
+        poller = getattr(app.state, "telegram_poller", None)
+        if poller is not None and not poller.healthy:
+            raise HTTPException(status_code=503, detail="telegram_inbound_unavailable")
         return {"status": "ready", "storage": "sqlite"}
 
     @app.post("/v1/cloud/events")

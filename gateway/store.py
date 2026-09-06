@@ -29,6 +29,16 @@ CREATE TABLE IF NOT EXISTS bridges (
 CREATE TABLE IF NOT EXISTS auth_nonces (
   nonce TEXT PRIMARY KEY, principal TEXT NOT NULL, expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS telegram_message_map (
+  telegram_message_id INTEGER PRIMARY KEY, agent_id TEXT NOT NULL,
+  task_id TEXT NOT NULL, source_message_id TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS telegram_updates (
+  update_id INTEGER PRIMARY KEY, consumed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS telegram_offset (
+  id INTEGER PRIMARY KEY CHECK (id = 1), offset_value INTEGER NOT NULL
+);
 """
 
 
@@ -91,6 +101,55 @@ class GatewayStore:
                  instruction["text"], instruction.get("source_message_id"), now_iso()),
             )
             return cur.rowcount == 1
+
+    def map_telegram_message(self, telegram_message_id: int, agent_id: str, task_id: str,
+                             source_message_id: str) -> None:
+        """Persist the cloud notification target used by inbound Telegram replies."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO telegram_message_map "
+                "(telegram_message_id,agent_id,task_id,source_message_id,created_at) VALUES (?,?,?,?,?)",
+                (telegram_message_id, agent_id, task_id, source_message_id, now_iso()),
+            )
+
+    def telegram_message_target(self, telegram_message_id: int) -> Optional[sqlite3.Row]:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT * FROM telegram_message_map WHERE telegram_message_id = ?",
+                (telegram_message_id,),
+            ).fetchone()
+
+    def telegram_offset(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT offset_value FROM telegram_offset WHERE id = 1").fetchone()
+            return int(row["offset_value"]) if row else 0
+
+    def set_telegram_offset(self, value: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO telegram_offset (id, offset_value) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET offset_value = excluded.offset_value",
+                (value,),
+            )
+
+    def consume_telegram_update(self, update_id: int, instruction: Optional[dict] = None) -> bool:
+        """Atomically deduplicate an update and, when valid, enqueue its reply."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO telegram_updates (update_id, consumed_at) VALUES (?, ?)",
+                (update_id, now_iso()),
+            )
+            if cur.rowcount != 1:
+                return False
+            if instruction is not None:
+                conn.execute(
+                    "INSERT OR IGNORE INTO instructions "
+                    "(message_id,agent_id,task_id,text,source_message_id,created_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (instruction["message_id"], instruction["agent_id"], instruction.get("task_id"),
+                     instruction["text"], instruction.get("source_message_id"), now_iso()),
+                )
+            return True
 
     def pending_instructions(self, limit: int) -> list[sqlite3.Row]:
         with self._connect() as conn:
