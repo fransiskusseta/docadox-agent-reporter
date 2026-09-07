@@ -13,7 +13,9 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
   message_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, agent_name TEXT,
   task_id TEXT NOT NULL, status TEXT NOT NULL, summary TEXT NOT NULL,
-  details TEXT, client_timestamp TEXT, created_at TEXT NOT NULL,
+  details TEXT, provider TEXT, repository TEXT, branch TEXT, commit_sha TEXT,
+  started_at TEXT, completed_at TEXT, source TEXT, client_timestamp TEXT,
+  created_at TEXT NOT NULL,
   notified_at TEXT, last_error TEXT
 );
 CREATE TABLE IF NOT EXISTS instructions (
@@ -54,6 +56,13 @@ class GatewayStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate_event_columns(conn)
+
+    def _migrate_event_columns(self, conn: sqlite3.Connection) -> None:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
+        for name in ("provider", "repository", "branch", "commit_sha", "started_at", "completed_at", "source"):
+            if name not in columns:
+                conn.execute(f"ALTER TABLE events ADD COLUMN {name} TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -71,10 +80,14 @@ class GatewayStore:
         with self._connect() as conn:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO events
-                (message_id,agent_id,agent_name,task_id,status,summary,details,client_timestamp,created_at)
-                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (message_id,agent_id,agent_name,task_id,status,summary,details,provider,repository,branch,
+                 commit_sha,started_at,completed_at,source,client_timestamp,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (event["message_id"], event["agent_id"], event.get("agent_name"), event["task_id"],
-                 event["status"], event["summary"], event.get("details"), event.get("timestamp"), now_iso()),
+                 event["status"], event["summary"], event.get("details"), event.get("provider"),
+                 event.get("repository"), event.get("branch"), event.get("commit_sha"),
+                 event.get("started_at"), event.get("completed_at"), event.get("source"),
+                 event.get("timestamp"), now_iso()),
             )
             return cur.rowcount == 1
 

@@ -42,6 +42,8 @@ class ReporterCoreTelegramNotifier:
                 task_id=event["task_id"], status=event["status"], summary=event["summary"],
                 details=event.get("details"), client_timestamp=event.get("timestamp"),
                 message_id=event["message_id"],
+                provider=event.get("provider"), repository=event.get("repository"),
+                branch=event.get("branch"),
             )
             # A crash after Telegram send but before Gateway acknowledgment
             # leaves the same message_id already notified in Core. Treat that

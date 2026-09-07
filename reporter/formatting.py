@@ -29,13 +29,17 @@ _OWNER_ACTION_LINE = {
 
 
 def format_notification(*, agent_name: str, agent_id: str, task_id: str, status: str,
-                        summary: str, details: str | None) -> str:
+                        summary: str, details: str | None, provider: str | None = None,
+                        repository: str | None = None, branch: str | None = None) -> str:
     icon = _ICON.get(status, "ℹ️")
-    lines = [
-        f"{icon} {agent_name} ({agent_id}) — {status}",
-        f"Task: {task_id}",
-        summary,
-    ]
+    lines = [f"{icon} {agent_name} ({agent_id}) — {status}"]
+    if provider:
+        lines.append(f"Provider: {provider}")
+    if repository:
+        lines.append(f"Repo: {repository}")
+    if branch:
+        lines.append(f"Branch: {branch}")
+    lines.extend([f"Task: {task_id}", summary])
     if details:
         lines.append(details)
     lines.append(_OWNER_ACTION_LINE.get(status, "Owner action: none"))

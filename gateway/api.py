@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -10,6 +11,25 @@ from .config import GatewaySettings
 from .models import AgentEvent, Heartbeat, OwnerReply
 from .notifier import EventNotifier, NullNotifier
 from .store import GatewayStore
+from reporter.security import find_secret_like_pattern
+
+_TERMINAL_STATUSES = {"PASS", "BLOCKED", "FAILED", "OWNER_ACTION_REQUIRED", "CANCELLED", "TIMED_OUT"}
+
+
+def _completion_message_id(body: AgentEvent) -> str:
+    """Stable fallback identity for producers unable to provide an ID.
+
+    Completion time/source/commit are completion identity when available;
+    provider + task + terminal state remains the safe deterministic floor.
+    """
+    if body.message_id:
+        return body.message_id
+    identity = "\x1f".join([
+        body.provider or "unknown", body.task_id, body.status,
+        body.completed_at or body.timestamp or "", body.commit_sha or "",
+        body.source or "cloud-self-report",
+    ])
+    return "cloud-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
 def create_app(*, store: GatewayStore, settings: GatewaySettings,
@@ -35,6 +55,11 @@ def create_app(*, store: GatewayStore, settings: GatewaySettings,
     async def adapter_auth(request: Request) -> None:
         await auth.verify(request, settings.adapter_secret, "adapter")
 
+    async def completion_auth(request: Request) -> None:
+        # Completion producers use the already deployed adapter HMAC secret;
+        # this avoids creating another privileged credential boundary.
+        await auth.verify(request, settings.adapter_secret, "agent-completion")
+
     async def core_auth(request: Request) -> None:
         await auth.verify(request, settings.core_secret, "reporter-core")
 
@@ -52,14 +77,27 @@ def create_app(*, store: GatewayStore, settings: GatewaySettings,
             raise HTTPException(status_code=503, detail="telegram_inbound_unavailable")
         return {"status": "ready", "storage": "sqlite"}
 
+    async def _record_event(body: AgentEvent, *, terminal_only: bool = False):
+        if terminal_only and body.status not in _TERMINAL_STATUSES:
+            raise HTTPException(status_code=422, detail="completion_status_must_be_terminal")
+        for value in (body.summary, body.details or ""):
+            if find_secret_like_pattern(value) is not None:
+                raise HTTPException(status_code=422, detail="secret_like_content_rejected")
+        event = body.model_dump()
+        event["message_id"] = _completion_message_id(body)
+        inserted = store.record_event(event)
+        if inserted or store.event_needs_notification(event["message_id"]):
+            notifier.notify(event, store)
+        return {"message_id": event["message_id"], "accepted": True, "duplicate": not inserted,
+                "notification_pending": store.event_needs_notification(event["message_id"])}
+
+    @app.post("/v1/agent-events")
+    async def agent_completion_event(body: AgentEvent, _: None = Depends(completion_auth)):
+        return await _record_event(body, terminal_only=True)
+
     @app.post("/v1/cloud/events")
     async def cloud_event(body: AgentEvent, _: None = Depends(adapter_auth)):
-        event = body.model_dump()
-        inserted = store.record_event(event)
-        if inserted or store.event_needs_notification(body.message_id):
-            notifier.notify(event, store)
-        return {"message_id": body.message_id, "accepted": True, "duplicate": not inserted,
-                "notification_pending": store.event_needs_notification(body.message_id)}
+        return await _record_event(body)
 
     @app.post("/v1/cloud/owner-replies")
     async def owner_reply(body: OwnerReply, _: None = Depends(core_auth)):
@@ -69,10 +107,12 @@ def create_app(*, store: GatewayStore, settings: GatewaySettings,
     @app.post("/v1/bridge/events")
     async def bridge_event(body: AgentEvent, _: None = Depends(bridge_auth)):
         event = body.model_dump()
+        if not event.get("message_id"):
+            event["message_id"] = _completion_message_id(body)
         inserted = store.record_event(event)
-        if inserted or store.event_needs_notification(body.message_id):
+        if inserted or store.event_needs_notification(event["message_id"]):
             notifier.notify(event, store)
-        return {"message_id": body.message_id, "accepted": True, "duplicate": not inserted}
+        return {"message_id": event["message_id"], "accepted": True, "duplicate": not inserted}
 
     @app.get("/v1/bridge/instructions")
     async def instructions(_: None = Depends(bridge_auth)):

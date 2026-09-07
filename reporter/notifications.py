@@ -37,7 +37,8 @@ class EventResult:
 def handle_event(*, store: Store, settings: Settings, telegram: Optional[TelegramClient],
                  agent_id: str, agent_name: str, task_id: str, status: str, summary: str,
                  details: Optional[str], client_timestamp: Optional[str],
-                 message_id: Optional[str] = None) -> EventResult:
+                 message_id: Optional[str] = None, provider: Optional[str] = None,
+                 repository: Optional[str] = None, branch: Optional[str] = None) -> EventResult:
     """message_id is the canonical event-identity contract: optional input,
     preserved exactly when a trusted producer (e.g. the gateway/bridge)
     supplies one, and generated here when absent so every event -- including
@@ -86,7 +87,7 @@ def handle_event(*, store: Store, settings: Settings, telegram: Optional[Telegra
 
     text = formatting.format_notification(
         agent_name=agent_name, agent_id=agent_id, task_id=task_id, status=status,
-        summary=summary, details=details,
+        summary=summary, details=details, provider=provider, repository=repository, branch=branch,
     )
     try:
         sanitized = security.prepare_outbound_text(text, settings.max_telegram_message_len)

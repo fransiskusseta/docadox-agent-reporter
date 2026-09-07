@@ -22,6 +22,7 @@ metadata produces `OWNER_GATE` and can use the existing
 ## Components and contracts
 
 ```text
+Codex/Claude self-report ──HMAC──> Gateway /v1/agent-events ──> Reporter Core notifier ──> Telegram
 Cloud adapters ──HMAC──> Gateway /v1/cloud/events ──> Reporter Core notifier ──> Telegram
 Reporter Core Telegram reply ──HMAC──> Gateway /v1/cloud/owner-replies
 Local Reporter ── Local Bridge ──outbound HTTPS──> Gateway
@@ -33,6 +34,33 @@ and Telegram client through `ReporterCoreTelegramNotifier`. Telegram polling and
 Owner allowlist policy remain Reporter Core responsibilities. The Core sends a
 normalized `OwnerReply` to `/v1/cloud/owner-replies` after routing the reply to an
 exact agent/task target.
+
+## Direct cloud completion
+
+This repository has no reliable native Codex Cloud or Claude Code Web
+completion hook in its current integration context. Both providers use the
+authenticated provider-neutral fallback `POST /v1/agent-events`. It accepts
+only terminal statuses: `PASS`, `BLOCKED`, `FAILED`, `OWNER_ACTION_REQUIRED`,
+`CANCELLED`, and `TIMED_OUT`. The existing `/v1/cloud/events` contract remains
+compatible with GitHub adapters and transient statuses.
+
+The fallback uses the existing `DOCADOX_GATEWAY_ADAPTER_SECRET` HMAC
+credential, strict validation, pre-persistence secret screening, durable
+SQLite storage, and authoritative explicit `message_id` deduplication. If an
+ID is omitted, a deterministic completion identity is derived from provider,
+task, terminal state, completion identity, commit, and source. The helper
+reads `DOCADOX_GATEWAY_URL` and `DOCADOX_GATEWAY_ADAPTER_SECRET`, retries at
+most three times, and prints only a safe result/error:
+
+```bash
+python -m reporter.cloud_task_report --provider claude --agent-id claude-1 \
+  --task-id ta08-id --status PASS --summary "TA08 complete" \
+  --repository fransiskusseta/docadox --branch feature/ta08 \
+  --message-id claude:ta08-id:terminal-1
+```
+
+Ready-to-paste provider instructions are in
+[`docs/cloud-completion-snippets.md`](docs/cloud-completion-snippets.md).
 
 In the cloud deployment, the Gateway also owns inbound Telegram polling. It uses
 the same configured Owner chat, Telegram-message correlation, and secret guard,
@@ -153,3 +181,5 @@ authenticated reply contract.
 5. Keep the Bridge offline, reply to the correlated Telegram message, and verify one pending Gateway instruction.
 6. Start `python scripts/run_bridge.py`; verify the exact `agent_id`/`task_id` reaches the local inbox.
 7. Re-poll/reconnect; verify no duplicate inbox row and the instruction acknowledgement is idempotent.
+8. Submit a synthetic safe signed `POST /v1/agent-events`, verify one Telegram
+   message, then repeat its `message_id` and verify no second message.

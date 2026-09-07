@@ -16,7 +16,8 @@ STATUS_VALUES = (
 class AgentEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message_id: str = Field(min_length=1, max_length=128)
+    message_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    provider: Optional[str] = Field(default=None, max_length=64)
     agent_id: str = Field(min_length=1, max_length=64)
     agent_name: Optional[str] = Field(default=None, max_length=64)
     task_id: str = Field(min_length=1, max_length=128)
@@ -24,6 +25,12 @@ class AgentEvent(BaseModel):
     summary: str = Field(min_length=1, max_length=500)
     details: Optional[str] = Field(default=None, max_length=3500)
     timestamp: Optional[str] = Field(default=None, max_length=64)
+    repository: Optional[str] = Field(default=None, max_length=256)
+    branch: Optional[str] = Field(default=None, max_length=256)
+    commit_sha: Optional[str] = Field(default=None, max_length=128)
+    started_at: Optional[str] = Field(default=None, max_length=64)
+    completed_at: Optional[str] = Field(default=None, max_length=64)
+    source: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("status")
     @classmethod
