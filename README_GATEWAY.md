@@ -42,6 +42,16 @@ queue to the local Reporter inbox. In cloud mode, do not run the local Reporter
 Telegram poller against the same bot; local-only development may continue to
 use `python -m reporter` as the Telegram poller owner.
 
+To run the production-local Bridge, use `python scripts/run_bridge.py`. It
+defaults non-secret settings to the Render Gateway, `bridge-1`, and Linux WSL
+storage under `~/.docadox-reporter/`. A one-time local secret file may be
+created at `~/.config/docadox-reporter/bridge.env`; keep it owner-only
+(`chmod 600`) and add only `DOCADOX_BRIDGE_SECRET=<same value as the Gateway
+bridge key>`. The launcher never prints that value. If the Bridge environment
+is present, Reporter Core automatically disables its local Telegram poller;
+set `DOCADOX_REPORTER_TELEGRAM_POLL_MODE=local` only for intentional local-only
+development.
+
 ## Environment
 
 Gateway:
@@ -76,6 +86,11 @@ DOCADOX_BRIDGE_POLL_INTERVAL_SEC=10
 DOCADOX_BRIDGE_MAX_BACKOFF_SEC=300
 ```
 
+The default paths above are intentionally Linux-local. Set
+`DOCADOX_REPORTER_DB_PATH` and `DOCADOX_BRIDGE_STATE_PATH` explicitly for test
+or development overrides; correctness-critical SQLite files should not
+default to `/mnt/c` because WAL/locking behavior there is not reliable.
+
 Generate and rotate secrets outside the application. Rotation is performed by
 adding a new bridge key, restarting the bridge with the new secret, then removing
 the old key. The current v2 implementation supports one active secret per bridge.
@@ -84,8 +99,12 @@ the old key. The current v2 implementation supports one active secret per bridge
 
 ```bash
 python -m gateway.service
-python -m gateway.bridge
+python scripts/run_bridge.py
 ```
+
+For cloud mode, run the Bridge only and leave Reporter Core's Telegram poller
+disabled. For local-only development, omit `DOCADOX_GATEWAY_URL` or set
+`DOCADOX_REPORTER_TELEGRAM_POLL_MODE=local` before running `python -m reporter`.
 
 The Gateway may bind publicly in a cloud environment behind TLS. The Bridge must
 only initiate outbound HTTPS. The local Reporter Core remains bound to loopback.
@@ -124,3 +143,13 @@ SQLite is single-instance storage. Horizontal Gateway scaling, external KMS,
 automatic key rotation, and heartbeat alert policy are future work. Telegram
 inbound routing remains in Reporter Core; the Gateway accepts only its normalized
 authenticated reply contract.
+
+## Concise live-smoke checklist
+
+1. `curl -fsS https://<gateway>/v1/ready` → `{"status":"ready"}`.
+2. `curl -fsS https://<adapter>/health` → `{"status":"ok"}`.
+3. Trigger one supported notifying GitHub event; verify exactly one Telegram message.
+4. Request the same GitHub delivery again; verify the adapter/Gateway deduplicate it.
+5. Keep the Bridge offline, reply to the correlated Telegram message, and verify one pending Gateway instruction.
+6. Start `python scripts/run_bridge.py`; verify the exact `agent_id`/`task_id` reaches the local inbox.
+7. Re-poll/reconnect; verify no duplicate inbox row and the instruction acknowledgement is idempotent.

@@ -29,16 +29,21 @@ def run() -> None:
             "disabled. Events are still recorded locally; nothing will be sent to Telegram."
         )
 
+    if not settings.local_telegram_poller_enabled():
+        logger.info("Local Telegram polling disabled (cloud Gateway owns inbound polling)")
+
     app = create_app(store=store, settings=settings, telegram=telegram)
-    poller = PollerThread(store, settings, telegram)
-    poller.start()
+    poller = PollerThread(store, settings, telegram) if settings.local_telegram_poller_enabled() else None
+    if poller is not None:
+        poller.start()
 
     config = uvicorn.Config(app, host=settings.host, port=settings.port, log_level="info")
     server = uvicorn.Server(config)
 
     def _shutdown(signum, frame):
         logger.info("Shutdown signal received; stopping poller and server…")
-        poller.stop()
+        if poller is not None:
+            poller.stop()
         server.should_exit = True
 
     signal.signal(signal.SIGINT, _shutdown)
@@ -46,8 +51,9 @@ def run() -> None:
 
     logger.info("Docadox Agent Reporter listening on %s:%s (loopback-only)", settings.host, settings.port)
     server.run()
-    poller.stop()
-    poller.join(timeout=5)
+    if poller is not None:
+        poller.stop()
+        poller.join(timeout=5)
 
 
 if __name__ == "__main__":

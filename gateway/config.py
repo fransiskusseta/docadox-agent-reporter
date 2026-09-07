@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+DEFAULT_LOCAL_DATA_DIR = Path.home() / ".docadox-reporter"
+
+
 def _keys(value: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for item in value.split(","):
@@ -46,10 +49,14 @@ class BridgeSettings:
     bridge_id: str = field(default_factory=lambda: os.environ.get("DOCADOX_BRIDGE_ID", ""))
     bridge_secret: str = field(default_factory=lambda: os.environ.get("DOCADOX_BRIDGE_SECRET", ""))
     reporter_db_path: Path = field(default_factory=lambda: Path(os.environ.get(
-        "DOCADOX_REPORTER_DB_PATH", "data/reporter.db")))
+        "DOCADOX_REPORTER_DB_PATH", str(DEFAULT_LOCAL_DATA_DIR / "reporter.db"))))
     state_path: Path = field(default_factory=lambda: Path(os.environ.get(
-        "DOCADOX_BRIDGE_STATE_PATH", "data/bridge.db")))
+        "DOCADOX_BRIDGE_STATE_PATH", str(DEFAULT_LOCAL_DATA_DIR / "bridge.db"))))
     poll_interval_sec: float = field(default_factory=lambda: float(os.environ.get(
         "DOCADOX_BRIDGE_POLL_INTERVAL_SEC", "10")))
     max_backoff_sec: float = field(default_factory=lambda: float(os.environ.get(
         "DOCADOX_BRIDGE_MAX_BACKOFF_SEC", "300")))
+
+    def ensure_local_paths(self) -> None:
+        for path in (self.reporter_db_path, self.state_path):
+            path.parent.mkdir(parents=True, exist_ok=True)

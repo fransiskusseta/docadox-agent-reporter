@@ -16,4 +16,6 @@ venv/
 *.db-shm
 *.sqlite
 *.sqlite3
+bridge.env
+*.local.env
 .qa-test-result.txt

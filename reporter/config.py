@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("DOCADOX_REPORTER_DATA_DIR", ROOT_DIR / "data"))
+DEFAULT_DATA_DIR = Path.home() / ".docadox-reporter"
+DATA_DIR = Path(os.environ.get("DOCADOX_REPORTER_DATA_DIR", DEFAULT_DATA_DIR))
 DB_PATH = DATA_DIR / "reporter.db"
 
 
@@ -41,6 +42,9 @@ class Settings:
     port: int = field(default_factory=lambda: int(os.environ.get("DOCADOX_REPORTER_PORT", "8787")))
     poll_interval_sec: float = field(default_factory=lambda: float(
         os.environ.get("DOCADOX_REPORTER_POLL_INTERVAL_SEC", "3")))
+    telegram_poll_mode: str = field(default_factory=lambda: os.environ.get(
+        "DOCADOX_REPORTER_TELEGRAM_POLL_MODE",
+        "cloud" if os.environ.get("DOCADOX_GATEWAY_URL") else "local"))
     allowed_agent_ids: frozenset[str] = field(default_factory=lambda: frozenset(
         a.strip() for a in os.environ.get(
             "DOCADOX_REPORTER_AGENT_IDS",
@@ -53,6 +57,9 @@ class Settings:
 
     def telegram_configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
+
+    def local_telegram_poller_enabled(self) -> bool:
+        return self.telegram_poll_mode == "local"
 
 
 def get_settings() -> Settings:

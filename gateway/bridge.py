@@ -41,6 +41,8 @@ class GatewayClient:
         try:
             with urllib.request.urlopen(req, timeout=20) as response:
                 return json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            raise BridgeTransportError(f"HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise BridgeTransportError(type(exc).__name__) from exc
 
@@ -60,6 +62,7 @@ class GatewayClient:
 class LocalBridge:
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
+        self.settings.ensure_local_paths()
         self.client = GatewayClient(settings)
         self.state = BridgeState(settings.state_path)
         self.local_store = Store(settings.reporter_db_path)
@@ -108,24 +111,52 @@ class LocalBridge:
             self.client.acknowledge(message_id)
 
 
-def run() -> None:
+def run() -> int:
     import logging
-    import time as time_module
+    import signal
+    import threading
     from .config import BridgeSettings
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    bridge = LocalBridge(BridgeSettings())
+    logger = logging.getLogger("docadox.bridge")
+    settings = BridgeSettings()
+    try:
+        bridge = LocalBridge(settings)
+    except (OSError, ValueError) as exc:
+        logger.error("Bridge startup failed (%s); check local configuration and database paths", type(exc).__name__)
+        return 2
+
+    stop = threading.Event()
+
+    def _shutdown(signum, _frame):
+        logger.info("Bridge stopping (%s)", signal.Signals(signum).name)
+        stop.set()
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+    logger.info("Bridge starting (id=%s, gateway=%s, reporter_db=%s)",
+                settings.bridge_id, settings.gateway_url, settings.reporter_db_path)
     backoff = 1.0
-    while True:
+    connected = False
+    while not stop.is_set():
         try:
             bridge.run_once()
+            if not connected:
+                logger.info("Bridge connected")
+                connected = True
             backoff = 1.0
-            time_module.sleep(bridge.settings.poll_interval_sec)
+            stop.wait(bridge.settings.poll_interval_sec)
         except (BridgeTransportError, OSError) as exc:
-            logging.getLogger("docadox.bridge").warning("Gateway unavailable; retrying (%s)", type(exc).__name__)
-            time_module.sleep(min(backoff, bridge.settings.max_backoff_sec))
+            if connected:
+                logger.warning("Bridge disconnected (%s)", exc)
+                connected = False
+            delay = min(backoff, bridge.settings.max_backoff_sec)
+            logger.warning("Bridge retrying in %.0fs (%s)", delay, exc)
+            stop.wait(delay)
             backoff = min(backoff * 2, bridge.settings.max_backoff_sec)
+    logger.info("Bridge stopped")
+    return 0
 
 
 if __name__ == "__main__":
-    run()
+    raise SystemExit(run())
