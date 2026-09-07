@@ -80,8 +80,8 @@ Bridge:
 DOCADOX_GATEWAY_URL=https://gateway.example
 DOCADOX_BRIDGE_ID=bridge-1
 DOCADOX_BRIDGE_SECRET=<same-random-secret-as-the-gateway-key>
-DOCADOX_REPORTER_DB_PATH=data/reporter.db
-DOCADOX_BRIDGE_STATE_PATH=data/bridge.db
+DOCADOX_REPORTER_DB_PATH=~/.docadox-reporter/reporter.db
+DOCADOX_BRIDGE_STATE_PATH=~/.docadox-reporter/bridge.db
 DOCADOX_BRIDGE_POLL_INTERVAL_SEC=10
 DOCADOX_BRIDGE_MAX_BACKOFF_SEC=300
 ```
